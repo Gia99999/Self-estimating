@@ -63,69 +63,27 @@ y_test_full = torch.tensor(test_dataset_full.targets)
 
 
 
-def prepare_datasets(train_data, train_targets, test_data, test_targets, num_users, public_ratio=0.1):
-    X_train_client, X_public, y_train_client, y_public = train_test_split(
-        train_data, train_targets, test_size=public_ratio, stratify=train_targets, random_state=42
-    )
-    num_items = int(len(X_train_client) / num_users)
+def split_iid(train_targets, num_users, seed=42, min_size=10):
+    rng = np.random.default_rng(seed)
+    n = len(train_targets)
+    idxs = np.arange(n)
+    rng.shuffle(idxs)
+    base = n // num_users
+    rem  = n % num_users
+
     dict_users = {}
-    all_idxs = list(range(len(X_train_client)))
+    start = 0
     for i in range(num_users):
-        chosen = np.random.choice(all_idxs, num_items, replace=False)
-        dict_users[i] = set(chosen)
-        all_idxs = list(set(all_idxs) - dict_users[i])
-    if len(all_idxs) > 0:
-        dict_users[num_users-1] = dict_users[num_users-1].union(all_idxs)
-    dataset_clients = (X_train_client, y_train_client, dict_users)
-    dataset_public = torch.utils.data.TensorDataset(X_public, y_public)
-    dataset_test = torch.utils.data.TensorDataset(test_data, test_targets)
-    return dataset_clients, dataset_public, dataset_test
+        size_i = base + (1 if i < rem else 0)
+        part = idxs[start:start + size_i]
+        start += size_i
+        if len(part) < min_size:
+            raise ValueError(f"Client {i} has only {len(part)} samples (< min_size={min_size}).")
+        dict_users[i] = set(part.tolist())
 
-dataset_clients, dataset_public, dataset_test = prepare_datasets(
-    X_train_full, y_train_full, X_test_full, y_test_full, args.num_users, public_ratio=0.1
-)
-
-X_train_client, y_train_client, dict_users_train = dataset_clients
-public_data_loader = DataLoader(dataset_public, batch_size=args.bs, shuffle=False)
-test_loader = DataLoader(dataset_test, batch_size=args.bs, shuffle=False)
+    return dict_users
 
 
-def prepare_datasets_dirichlet(train_data, train_targets, test_data, test_targets, num_users, alpha=10, public_ratio=0.1):
-    X_train_client, X_public, y_train_client, y_public = train_test_split(
-        train_data, train_targets, test_size=public_ratio, stratify=train_targets, random_state=42
-    )
-
-    y_train_np = y_train_client.numpy()
-    idxs = np.arange(len(y_train_np))
-    num_classes = len(np.unique(y_train_np))
-
-    min_size = 0
-    while min_size < 10:  
-        idx_batch = [[] for _ in range(num_users)]
-        for k in range(num_classes):
-            idx_k = idxs[y_train_np == k]
-            np.random.shuffle(idx_k)
-            proportions = np.random.dirichlet(alpha * np.ones(num_users))
-            proportions = np.array([p * (len(idx_j) < len(y_train_np) / num_users) for p, idx_j in zip(proportions, idx_batch)])
-            proportions = proportions / proportions.sum()
-            proportions = (np.cumsum(proportions) * len(idx_k)).astype(int)[:-1]
-            split_idx = np.split(idx_k, proportions)
-            for i, idx in enumerate(split_idx):
-                idx_batch[i].extend(idx)
-        min_size = min(len(idx_j) for idx_j in idx_batch)
-
-    dict_users = {i: set(idx_batch[i]) for i in range(num_users)}
-
-    dataset_clients = (X_train_client, y_train_client, dict_users)
-    dataset_public = torch.utils.data.TensorDataset(X_public, y_public)
-    dataset_test = torch.utils.data.TensorDataset(test_data, test_targets)
-    return dataset_clients, dataset_public, dataset_test
+dict_users_train = split_iid(y_train_full, args.num_users, seed=42, min_size=10)
 
 
-dataset_clients, dataset_public, dataset_test = prepare_datasets_dirichlet(
-    X_train_full, y_train_full, X_test_full, y_test_full, args.num_users, alpha=10, public_ratio=0.1
-)
-
-X_train_client, y_train_client, dict_users_train = dataset_clients
-public_data_loader = DataLoader(dataset_public, batch_size=args.bs, shuffle=False)
-test_loader = DataLoader(dataset_test, batch_size=args.bs, shuffle=False)

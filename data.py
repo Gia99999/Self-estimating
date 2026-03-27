@@ -63,7 +63,7 @@ y_test_full = torch.tensor(test_dataset_full.targets)
 
 
 
-def split_iid(train_targets, num_users, seed=42, min_size=10):
+def split_iid(train_targets, num_users):
     rng = np.random.default_rng(seed)
     n = len(train_targets)
     idxs = np.arange(n)
@@ -77,13 +77,11 @@ def split_iid(train_targets, num_users, seed=42, min_size=10):
         size_i = base + (1 if i < rem else 0)
         part = idxs[start:start + size_i]
         start += size_i
-        if len(part) < min_size:
-            raise ValueError(f"Client {i} has only {len(part)} samples (< min_size={min_size}).")
         dict_users[i] = set(part.tolist())
 
     return dict_users
 
 
-dict_users_train = split_iid(y_train_full, args.num_users, seed=42, min_size=10)
+dict_users_train = split_iid(y_train_full, args.num_users)
 
 

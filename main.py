@@ -101,7 +101,7 @@ for run in range(num_runs):
         X_tr, y_tr_noisy = noisy_train_data[idx]
         X_val, y_val_noisy = noisy_val_data[idx]
 
-        slope = compute_client_slope_1_reinit(
+        slope = compute_client_slope(
             X_tr, y_tr_noisy,
             X_val, y_val_noisy
         )
